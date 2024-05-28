@@ -18,7 +18,7 @@ pub mod hw {
     use super::*;
     use crate::ImageFormat;
     #[cfg(target_os = "windows")]
-    use hwcodec::{ffmpeg::ffmpeg_linesize_offset_length, AVPixelFormat};
+    use hwcodec::{ffmpeg::AVPixelFormat, ffmpeg_ram::ffmpeg_linesize_offset_length};
 
     #[cfg(target_os = "windows")]
     pub fn hw_nv12_to(
@@ -213,6 +213,14 @@ pub fn convert_to_yuv(
         );
     }
     if src_pixfmt == crate::Pixfmt::BGRA || src_pixfmt == crate::Pixfmt::RGBA {
+        // stride is calculated, not real, so we need to check it
+        if src_stride[0] < src_width * 4 {
+            bail!(
+                "src_stride[0] < src_width * 4: {} < {}",
+                src_stride[0],
+                src_width * 4
+            );
+        }
         if src.len() < src_stride[0] * src_height {
             bail!(
                 "wrong src len, {} < {} * {}",
@@ -222,9 +230,7 @@ pub fn convert_to_yuv(
             );
         }
     }
-    let align = |x:usize| {
-        (x + 63) / 64 * 64
-    };
+    let align = |x: usize| (x + 63) / 64 * 64;
 
     match (src_pixfmt, dst_fmt.pixfmt) {
         (crate::Pixfmt::BGRA, crate::Pixfmt::I420) | (crate::Pixfmt::RGBA, crate::Pixfmt::I420) => {
@@ -282,7 +288,8 @@ pub fn convert_to_yuv(
             let dst_stride_u = dst_fmt.stride[1];
             let dst_stride_v = dst_fmt.stride[2];
             dst.resize(
-                align(dst_fmt.h) * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
+                align(dst_fmt.h)
+                    * (align(dst_stride_y) + align(dst_stride_u) + align(dst_stride_v)),
                 0,
             );
             let dst_y = dst.as_mut_ptr();

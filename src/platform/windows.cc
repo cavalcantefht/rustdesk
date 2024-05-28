@@ -434,17 +434,6 @@ extern "C"
         return nout;
     }
 
-    uint32_t get_current_process_session_id()
-    {
-        DWORD sessionId = 0;
-        HANDLE hProcess = GetCurrentProcess();
-        if (hProcess) {
-            ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
-            CloseHandle(hProcess);
-        }
-        return sessionId;
-    }
-
     uint32_t get_session_user_info(PWSTR bufin, uint32_t nin, BOOL rdp, uint32_t id)
     {
         uint32_t nout = 0;
@@ -500,28 +489,6 @@ extern "C"
         if (buf && !tmpStr.empty() && tmpStr.size() < bufSize) {
             wcsncpy_s(buf, bufSize, tmpStr.c_str(), tmpStr.size());
         }
-    }
-
-    BOOL has_rdp_service()
-    {
-        PWTS_SESSION_INFOA pInfos;
-        DWORD count;
-        auto rdp = "rdp";
-        auto nrdp = strlen(rdp);
-        auto rdp_or_console = WTSGetActiveConsoleSessionId();
-        if (WTSEnumerateSessionsA(WTS_CURRENT_SERVER_HANDLE, NULL, 1, &pInfos, &count))
-        {
-            for (DWORD i = 0; i < count; i++)
-            {
-                auto info = pInfos[i];
-                if (!strnicmp(info.pWinStationName, rdp, nrdp))
-                {
-                    return TRUE;
-                }
-            }
-            WTSFreeMemory(pInfos);
-        }
-        return FALSE;
     }
 } // end of extern "C"
 
@@ -701,5 +668,34 @@ extern "C"
     {
         AllocConsole();
         freopen("CONOUT$", "w", stdout);
+    }
+
+    bool is_service_running_w(LPCWSTR serviceName)
+    {
+        SC_HANDLE hSCManager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+        if (hSCManager == NULL) {
+            return false;
+        }
+
+        SC_HANDLE hService = OpenServiceW(hSCManager, serviceName, SERVICE_QUERY_STATUS);
+        if (hService == NULL) {
+            CloseServiceHandle(hSCManager);
+            return false;
+        }
+
+        SERVICE_STATUS_PROCESS serviceStatus;
+        DWORD bytesNeeded;
+        if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, reinterpret_cast<LPBYTE>(&serviceStatus), sizeof(serviceStatus), &bytesNeeded)) {
+            CloseServiceHandle(hService);
+            CloseServiceHandle(hSCManager);
+            return false;
+        }
+
+        bool isRunning = (serviceStatus.dwCurrentState == SERVICE_RUNNING);
+
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCManager);
+
+        return isRunning;
     }
 } // end of extern "C"
